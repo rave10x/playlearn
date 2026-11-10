@@ -35,7 +35,7 @@ impl Core {
     }
     pub fn ytdlp(&self, args: &[&str]) -> R<String> {
         let bin = self.ensure_ytdlp()?;
-        run(&bin, &args.iter().map(|s| s.to_string()).collect::<Vec<_>>(), Duration::from_secs(180))
+        run(&bin, &args.iter().map(|s| s.to_string()).collect::<Vec<_>>(), Duration::from_secs(180)).map_err(|e| friendly(&e))
     }
 
     // ---------- playlists ----------
@@ -298,4 +298,17 @@ pub fn looks_empty(html: &str) -> bool {
     let c = Regex::new(r"<[^>]+>").unwrap().replace_all(&b, "");
     let text = c.split_whitespace().collect::<Vec<_>>().join(" ");
     text.chars().count() < 1500 || Regex::new(r"(?i)<title>\s*Just a moment").unwrap().is_match(html)
+}
+
+/// Turn raw yt-dlp errors into something a person can act on.
+pub fn friendly(e: &str) -> String {
+    let l = e.to_lowercase();
+    if l.contains("does not exist") || l.contains("not exist") { return "That playlist doesn't exist, or it's private. Check the link and that the playlist is public or unlisted.".into(); }
+    if l.contains("unviewable") { return "YouTube Mix / auto-generated playlists can't be imported. Open a normal playlist (a link with list=PL…).".into(); }
+    if l.contains("private") || l.contains("sign in") || l.contains("members-only") { return "That video or playlist is private or needs a sign-in.".into(); }
+    if l.contains("unable to download") || l.contains("getaddrinfo") || l.contains("timed out") || l.contains("connection") || l.contains("network") {
+        return "Couldn't reach YouTube. Check your internet connection and try again.".into();
+    }
+    if l.contains("video unavailable") || l.contains("unavailable") { return "That video is unavailable.".into(); }
+    e.trim_start_matches("ERROR:").trim().to_string()
 }
