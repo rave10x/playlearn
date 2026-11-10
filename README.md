@@ -22,7 +22,9 @@ irm https://raw.githubusercontent.com/rave10x/playlearn/main/install.ps1 | iex
 curl -fsSL https://raw.githubusercontent.com/rave10x/playlearn/main/install.sh | bash
 ```
 
-Both download the latest release and set up the app menu / Start menu entry. Ad blocking is built in and on by default.
+**Android** (8.0+): download [Playlearn-android.apk](https://github.com/rave10x/playlearn/releases/latest/download/Playlearn-android.apk) on your phone and open it (allow "Install unknown apps" for your browser when asked). Or from a computer with USB debugging: `adb install Playlearn-android.apk`.
+
+All of them download the latest release. Ad blocking is built in and on by default, on every platform.
 More options (`.deb`, `.rpm`, `.msi`, build from source) are in [Install](#install).
 
 ## Features
@@ -81,6 +83,12 @@ irm https://raw.githubusercontent.com/rave10x/playlearn/main/install.ps1 | iex
 
 Or download the `-setup.exe` / `.msi` from the [Releases](https://github.com/rave10x/playlearn/releases) page.
 yt-dlp is downloaded on first use. For 720p downloads install ffmpeg: `winget install Gyan.FFmpeg`.
+
+### Android
+
+Download [Playlearn-android.apk](https://github.com/rave10x/playlearn/releases/latest/download/Playlearn-android.apk) (about 4 MB, Android 8.0+) and open it. Android asks once to allow installs from your browser or file manager.
+It is a native app with the same features, the same built-in ad blocker, and reads the same backup file (**Settings → Export / Import**), so you can move your courses between phone and computer.
+The APK is signed with a debug key for sideloading, so install updates over it from the same source.
 
 ### Build from source
 
