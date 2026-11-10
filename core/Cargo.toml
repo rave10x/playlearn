@@ -1,6 +1,6 @@
 [package]
 name = "playlearn-core"
-version = "1.5.0"
+version = "1.6.0"
 edition = "2021"
 description = "Playlearn backend: storage, yt-dlp, downloads, backups, local HTTP API"
 license = "MIT"
@@ -22,7 +22,6 @@ name = "playlearn-server"
 path = "src/bin/server.rs"
 
 [target.'cfg(windows)'.dependencies]
-rfd = "0.15"
 ureq = { version = "2", default-features = false, features = ["native-tls"] }
 native-tls = "0.2"
 

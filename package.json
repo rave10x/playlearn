@@ -1,48 +1,19 @@
 {
   "name": "playlearn",
   "productName": "Playlearn",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Turn any YouTube playlist into a Udemy-style course, saved locally",
-  "main": "main.js",
+  "private": true,
   "scripts": {
-    "start": "electron ."
+    "build": "tauri build",
+    "dev": "tauri dev"
   },
   "license": "MIT",
   "devDependencies": {
-    "electron": "^45.2.1"
+    "@tauri-apps/cli": "^2"
   },
   "author": "rahul1015s",
-  "keywords": [
-    "youtube",
-    "playlist",
-    "course",
-    "electron",
-    "udemy",
-    "fedora",
-    "linux",
-    "windows"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/rahul1015s/playlearn.git"
-  },
-  "bin": {
-    "playlearn": "bin/cli.js"
-  },
-  "files": [
-    "bin",
-    "main.js",
-    "preload.js",
-    "renderer",
-    "assets",
-    "LICENSE",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=18"
-  },
-  "homepage": "https://github.com/rahul1015s/playlearn#readme",
-  "bugs": {
-    "url": "https://github.com/rahul1015s/playlearn/issues"
-  }
+  "repository": { "type": "git", "url": "git+https://github.com/rave10x/playlearn.git" },
+  "homepage": "https://github.com/rave10x/playlearn#readme",
+  "bugs": { "url": "https://github.com/rave10x/playlearn/issues" }
 }

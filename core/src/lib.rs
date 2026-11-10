@@ -2,6 +2,7 @@
 //! (YouTube embeds refuse custom-scheme origins, so the UI is loaded from http://127.0.0.1:<port>/).
 mod courses;
 mod dl;
+mod dnd;
 mod server;
 mod store;
 mod util;
@@ -15,6 +16,9 @@ use util::*;
 
 /// Called by the server to open (`true`) or close (`false`) a hidden webview that renders `url`
 /// and posts its HTML back to `/__article/<job>`.
+/// File dialogs are provided by the host app: ("save" | "open", suggested file name) -> chosen path.
+pub type DialogHook = Arc<dyn Fn(&str, &str) -> Option<PathBuf> + Send + Sync>;
+
 pub type RenderHook = Arc<dyn Fn(String, String, bool) + Send + Sync>;
 
 pub struct Core {
@@ -27,6 +31,7 @@ pub struct Core {
     articles: Mutex<HashMap<String, (String, String)>>,
     jobs: Mutex<Vec<String>>,
     render_hook: Mutex<Option<RenderHook>>,
+    dialog_hook: Mutex<Option<DialogHook>>,
 }
 
 pub fn rand_hex(n: usize) -> String {
@@ -48,11 +53,18 @@ impl Core {
             articles: Mutex::new(HashMap::new()),
             jobs: Mutex::new(vec![]),
             render_hook: Mutex::new(None),
+            dialog_hook: Mutex::new(None),
         })
     }
     /// Same folder the Electron build uses (…\Roaming\Playlearn on Windows, ~/.config/Playlearn on Linux).
     pub fn default_data_dir() -> PathBuf { dirs::config_dir().unwrap_or_else(std::env::temp_dir).join("Playlearn") }
     pub fn user_agent() -> &'static str { util::UA }
+    pub fn set_dialog_hook(&self, h: DialogHook) { *self.dialog_hook.lock().unwrap() = Some(h); }
+    fn pick(&self, kind: &str, name: &str) -> Option<PathBuf> {
+        if let Some(p) = std::env::var_os(if kind == "save" { "PL_EXPORT_PATH" } else { "PL_IMPORT_PATH" }) { return Some(PathBuf::from(p)); } // tests
+        let h = self.dialog_hook.lock().unwrap().clone()?;
+        h(kind, name)
+    }
     pub fn set_render_hook(&self, h: RenderHook) { *self.render_hook.lock().unwrap() = Some(h); }
     pub fn port(&self) -> u16 { *self.port.lock().unwrap() }
     pub fn url(&self) -> String { format!("http://127.0.0.1:{}/", self.port()) }
@@ -101,7 +113,7 @@ impl Core {
             "data:export" => wrap(self.export_data(&arg(0))),
             "data:import" => wrap(self.import_data()),
             "data:folder" => { let _ = std::fs::create_dir_all(self.store.courses_dir()); let _ = open::that_detached(&self.store.dir); Ok(json!("")) }
-            "dnd:set" => Ok(json!(false)), // no Do-Not-Disturb integration on Windows
+            "dnd:set" => Ok(json!(self.set_dnd(arg(0).as_bool().unwrap_or(false)))),
             "open-external" => {
                 let u = s(0);
                 if u.starts_with("http://") || u.starts_with("https://") { let _ = open::that_detached(u); }
@@ -125,7 +137,7 @@ impl Core {
         let courses = self.store.list();
         let secs = now_ms() / 1000;
         let stamp = civil_date(secs);
-        let Some(path) = pick_save(&format!("playlearn-backup-{stamp}.json")) else { return Ok(json!({"ok": false, "canceled": true})) };
+        let Some(path) = self.pick("save", &format!("playlearn-backup-{stamp}.json")) else { return Ok(json!({"ok": false, "canceled": true})) };
         let mut clean = serde_json::Map::new();
         for k in store::PREF_KEYS { if let Some(v) = prefs.get(k) { if !v.is_null() { clean.insert(k.to_string(), v.clone()); } } }
         let body = json!({"format": store::BACKUP_FORMAT, "version": 1, "exportedAt": now_ms(), "prefs": clean, "courses": courses});
@@ -135,7 +147,7 @@ impl Core {
     }
 
     fn import_data(&self) -> R<Value> {
-        let Some(path) = pick_open() else { return Ok(json!({"ok": false, "canceled": true})) };
+        let Some(path) = self.pick("open", "") else { return Ok(json!({"ok": false, "canceled": true})) };
         self.import_backup_file(&path)
     }
 
@@ -175,17 +187,3 @@ fn civil_date(secs: i64) -> String {
 
 pub const EMBED_SCRIPT: &str = include_str!("embed.js");
 
-#[cfg(windows)]
-fn pick_save(name: &str) -> Option<PathBuf> {
-    let dlg = rfd::FileDialog::new().set_title("Export Playlearn data").set_file_name(name).add_filter("Playlearn backup", &["json"]);
-    match dirs::document_dir() { Some(d) => dlg.set_directory(d), None => dlg }.save_file()
-}
-#[cfg(windows)]
-fn pick_open() -> Option<PathBuf> {
-    rfd::FileDialog::new().set_title("Import Playlearn data").add_filter("Playlearn backup", &["json"]).pick_file()
-}
-// Non-Windows builds (development/tests only): paths come from environment variables.
-#[cfg(not(windows))]
-fn pick_save(_name: &str) -> Option<PathBuf> { std::env::var_os("PL_EXPORT_PATH").map(PathBuf::from) }
-#[cfg(not(windows))]
-fn pick_open() -> Option<PathBuf> { std::env::var_os("PL_IMPORT_PATH").map(PathBuf::from) }

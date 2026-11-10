@@ -1,45 +1,35 @@
 #!/usr/bin/env bash
-# Installs Playlearn for the current user (no root needed):
-# npm deps, `playlearn` command, app-menu entry and icons.
+# Playlearn installer for Linux (x86_64). Run:
+#   curl -fsSL https://raw.githubusercontent.com/rave10x/playlearn/main/install.sh | bash
+# Downloads the latest AppImage to ~/.local/bin/playlearn and adds an app-menu entry. No root needed.
 set -euo pipefail
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$DIR"
+REPO="rave10x/playlearn"
+[ "$(uname -m)" = "x86_64" ] || { echo "Only x86_64 Linux builds are published."; exit 1; }
+command -v curl >/dev/null || { echo "curl is required"; exit 1; }
 
-command -v node >/dev/null || { echo "Node.js is required (sudo dnf install nodejs)"; exit 1; }
-command -v yt-dlp >/dev/null || echo "Note: yt-dlp not found. Run: sudo dnf install yt-dlp  (or the app will download it on first import)"
+echo "Playlearn - finding the latest release..."
+URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep -o '"browser_download_url": *"[^"]*\.AppImage"' | head -1 | sed -E 's/.*"(https[^"]*)"/\1/')
+[ -n "$URL" ] || { echo "No AppImage found in the latest release."; exit 1; }
 
-npm install
-[ -x node_modules/electron/dist/electron ] || node node_modules/electron/install.js
-
-# remove leftovers from the old name (YT Course)
-rm -f "$HOME/.local/bin/yt-course" "$HOME/.local/share/applications/yt-course.desktop" "$HOME/.local/share/icons/hicolor"/*/apps/yt-course.*
-
-mkdir -p "$HOME/.local/bin" "$HOME/.local/share/applications"
-cat > "$HOME/.local/bin/playlearn" <<LAUNCH
-#!/bin/bash
-cd "$DIR" && exec ./node_modules/.bin/electron . "\$@"
-LAUNCH
-chmod +x "$HOME/.local/bin/playlearn"
-
-for s in 48 64 128 256 512; do
-  d="$HOME/.local/share/icons/hicolor/${s}x${s}/apps"; mkdir -p "$d"
-  cp "assets/icon-$s.png" "$d/playlearn.png"
-done
-mkdir -p "$HOME/.local/share/icons/hicolor/scalable/apps"
-cp assets/icon.svg "$HOME/.local/share/icons/hicolor/scalable/apps/playlearn.svg"
-
-cat > "$HOME/.local/share/applications/playlearn.desktop" <<DESKTOP
+BIN="$HOME/.local/bin"; DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+mkdir -p "$BIN" "$DATA/applications" "$DATA/icons/hicolor/256x256/apps"
+echo "Downloading $(basename "$URL")..."
+curl -fL --progress-bar "$URL" -o "$BIN/playlearn.tmp"
+chmod +x "$BIN/playlearn.tmp" && mv "$BIN/playlearn.tmp" "$BIN/playlearn"
+curl -fsSL "https://raw.githubusercontent.com/$REPO/main/assets/icon-256.png" -o "$DATA/icons/hicolor/256x256/apps/playlearn.png" || true
+cat > "$DATA/applications/playlearn.desktop" <<DESKTOP
 [Desktop Entry]
 Name=Playlearn
 Comment=Turn YouTube playlists into Udemy-style courses
-Exec=$HOME/.local/bin/playlearn %u
+Exec=$BIN/playlearn %u
 Icon=playlearn
 Terminal=false
 Type=Application
 Categories=Education;AudioVideo;
-StartupWMClass=Playlearn
+StartupWMClass=playlearn
 DESKTOP
-
-update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
-gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
-echo "Done. Launch from the app menu (Playlearn) or run: playlearn"
+update-desktop-database "$DATA/applications" 2>/dev/null || true
+gtk-update-icon-cache -f -t "$DATA/icons/hicolor" 2>/dev/null || true
+echo "Done. Open Playlearn from the app menu, or run: playlearn"
+echo "Needs WebKitGTK 4.1 (Fedora: sudo dnf install webkit2gtk4.1; Ubuntu: sudo apt install libwebkit2gtk-4.1-0) and a yt-dlp (auto-downloaded on first use)."
+case ":$PATH:" in *":$BIN:"*) ;; *) echo "Note: add $BIN to your PATH to use the 'playlearn' command." ;; esac

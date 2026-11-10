@@ -1,6 +1,6 @@
 [package]
 name = "playlearn"
-version = "1.5.0"
+version = "1.6.0"
 edition = "2021"
 description = "Turn any YouTube playlist into a Udemy-style course, saved locally"
 license = "MIT"
@@ -11,4 +11,5 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
 playlearn-core = { path = "../core" }

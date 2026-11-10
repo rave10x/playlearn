@@ -2,6 +2,7 @@
 
 use playlearn_core::{Core, EMBED_SCRIPT};
 use std::sync::Arc;
+use tauri_plugin_dialog::DialogExt;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn url_arg(argv: &[String]) -> Option<String> {
@@ -10,6 +11,7 @@ fn url_arg(argv: &[String]) -> Option<String> {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
@@ -21,9 +23,18 @@ fn main() {
         }))
         .setup(|app| {
             let core = Core::new(Core::default_data_dir());
+            core.restore_dnd();
             core.serve()?;
             let handle = app.handle().clone();
             let port = core.port();
+
+            let dh = app.handle().clone();
+            core.set_dialog_hook(Arc::new(move |kind, name| {
+                let b = dh.dialog().file().add_filter("Playlearn backup", &["json"]);
+                let p = if kind == "save" { b.set_title("Export Playlearn data").set_file_name(name).blocking_save_file() }
+                        else { b.set_title("Import Playlearn data").blocking_pick_file() };
+                p.and_then(|f| f.into_path().ok())
+            }));
 
             // Hidden browser used to read pages that block plain downloads (Cloudflare bot checks, JS-only pages).
             core.set_render_hook(Arc::new(move |url, job, open| {
@@ -67,6 +78,11 @@ fn main() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Playlearn");
+        .build(tauri::generate_context!())
+        .expect("error while building Playlearn")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Some(core) = app.try_state::<Arc<Core>>() { core.restore_dnd(); }
+            }
+        });
 }
