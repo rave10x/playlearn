@@ -19,7 +19,7 @@ Built in Rust ([Tauri](https://tauri.app)) for Linux and Windows. Developed and 
 - **Custom player** – play/pause, ±10s skip, seek bar with buffer, volume, speed, fullscreen,
   **captions** (on/off + language) and **auto-dubbed audio** switching; your choices are remembered
 - **Autoplay next lesson**, auto-complete at ~92 % watched
-- **Ad skipping** – in-player ad skipper and hidden YouTube overlays (best effort)
+- **Built-in ad blocker (always on, no setup)** – ad data is stripped from the player before any ad is scheduled, ad and tracking requests are blocked, and an in-player skipper handles anything left. Same blocker on Windows, Linux and Android (best effort)
 - **Back button** on the course page (also `Esc` / `Alt+←`)
 
 - **Custom courses** – no single playlist? Click **+ Custom course from individual videos** on Home, name it and paste any mix of video links (youtube.com, youtu.be, shorts) – one per line, from any channel. Playlist links in the mix add all their videos. Later, use **+ Add videos** in the course sidebar (or drop a link onto the window) to keep adding; hover a lesson to move it up/down or remove it, and rename the course on the Overview tab. Progress, notes, chapters, downloads and search work exactly like playlist courses

@@ -185,5 +185,6 @@ fn civil_date(secs: i64) -> String {
     format!("{:04}-{:02}-{:02}", if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-pub const EMBED_SCRIPT: &str = include_str!("embed.js");
+/// Ad blocker (document start) + player ops / DOM ad skipper, injected into every frame; both act only inside the YouTube embed.
+pub const EMBED_SCRIPT: &str = concat!(include_str!("adblock.js"), "\n", include_str!("embed.js"));
 
