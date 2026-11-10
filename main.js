@@ -29,26 +29,32 @@ const listCourses = () => {
 };
 
 // ---------- yt-dlp ----------
-const localBin = () => path.join(app.getPath('userData'), 'bin', 'yt-dlp');
-function findYtDlp() {
-  for (const p of (process.env.PATH || '').split(':')) {
-    const f = path.join(p, 'yt-dlp');
+const IS_WIN = process.platform === 'win32';
+const EXE = IS_WIN ? '.exe' : '';
+const localBin = () => path.join(app.getPath('userData'), 'bin', 'yt-dlp' + EXE);
+function findOnPath(name) {
+  for (const p of (process.env.PATH || process.env.Path || '').split(path.delimiter)) {
+    if (!p) continue;
+    const f = path.join(p.replace(/^"|"$/g, ''), name + EXE);
     if (fs.existsSync(f)) return f;
   }
-  return fs.existsSync(localBin()) ? localBin() : null;
+  return null;
+}
+function findYtDlp() {
+  return findOnPath('yt-dlp') || (fs.existsSync(localBin()) ? localBin() : null);
 }
 async function ensureYtDlp(send) {
   let bin = findYtDlp();
   if (bin) return bin;
   send('Downloading yt-dlp (one time)…');
-  const res = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux', { redirect: 'follow' });
+  const res = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest/download/' + (IS_WIN ? 'yt-dlp.exe' : 'yt-dlp_linux'), { redirect: 'follow' });
   if (!res.ok) throw new Error('Could not download yt-dlp (HTTP ' + res.status + ')');
   fs.mkdirSync(path.dirname(localBin()), { recursive: true });
   fs.writeFileSync(localBin(), Buffer.from(await res.arrayBuffer()), { mode: 0o755 });
   return localBin();
 }
 const run = (bin, args) => new Promise((resolve, reject) => {
-  execFile(bin, args, { maxBuffer: 256 * 1024 * 1024, timeout: 180000 }, (err, out, errout) =>
+  execFile(bin, args, { windowsHide: true, maxBuffer: 256 * 1024 * 1024, timeout: 180000 }, (err, out, errout) =>
     err ? reject(new Error((errout || err.message).split('\n').filter(Boolean).pop())) : resolve(out));
 });
 
@@ -304,7 +310,7 @@ function startServer() {
         return fs.createReadStream(f).pipe(res);
       }
       const f = path.normalize(path.join(RENDERER, rel === '/' ? 'index.html' : rel));
-      if (!f.startsWith(RENDERER) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+      if (!f.startsWith(RENDERER + path.sep) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' });
       fs.createReadStream(f).pipe(res);
     });
@@ -342,7 +348,8 @@ const AD_SKIPPER = `(() => {
 // ---------- offline downloads (yt-dlp) ----------
 const dlDir = (cid) => path.join(app.getPath('userData'), 'downloads', String(cid).replace(/[^\w-]/g, ''));
 const okId = (s) => /^[\w-]+$/.test(String(s || ''));
-const findBin = (name) => { for (const p of (process.env.PATH || '').split(':')) { const f = path.join(p, name); if (fs.existsSync(f)) return f; } return null; };
+const winFfmpeg = () => path.join(app.getPath('userData'), 'bin', 'ffmpeg.exe');
+const findBin = (name) => findOnPath(name) || (IS_WIN && name === 'ffmpeg' && fs.existsSync(winFfmpeg()) ? winFfmpeg() : null);
 function dlScan(cid) {
   const dir = dlDir(cid), out = {};
   if (!fs.existsSync(dir)) return out;
@@ -370,12 +377,12 @@ async function dlNext() {
   let bin;
   try { bin = await ensureYtDlp(() => {}); } catch (e) { dlCur = null; dlEmit(job, 'error', 0, { error: e.message }); return dlNext(); }
   const dir = dlDir(job.cid); fs.mkdirSync(dir, { recursive: true });
-  const ff = !!findBin('ffmpeg');
+  const ffPath = findBin('ffmpeg'), ff = !!ffPath;
   const fmt = ff ? 'bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/b[height<=720]' : 'b[height<=720][ext=mp4]/b[ext=mp4]/b';
   const args = ['--no-playlist', '--newline', '--no-warnings', '-f', fmt, '-o', path.join(dir, job.vid + '.%(ext)s'),
     '--write-subs', '--write-auto-subs', '--sub-langs', 'en', '--sub-format', 'vtt', '--retries', '5', '--concurrent-fragments', '4',
-    ...(ff ? ['--merge-output-format', 'mp4'] : []), 'https://www.youtube.com/watch?v=' + job.vid];
-  const proc = spawn(bin, args); job.proc = proc; let last = '', lastPct = -1;
+    ...(ff ? ['--merge-output-format', 'mp4', '--ffmpeg-location', ffPath] : []), 'https://www.youtube.com/watch?v=' + job.vid];
+  const proc = spawn(bin, args, { windowsHide: true }); job.proc = proc; let last = '', lastPct = -1;
   const onData = (b) => {
     const s = b.toString(); const ln = s.trim().split('\n').pop(); if (ln) last = ln;
     const hit = [...s.matchAll(/\[download\]\s+([\d.]+)%/g)].pop();
@@ -534,7 +541,8 @@ function createWindow() {
 
 const urlArg = (argv) => argv.find((a) => /^https?:\/\//.test(a) || /^ytcourse:/.test(a));
 
-app.setDesktopName('playlearn.desktop');
+if (process.platform === 'linux') app.setDesktopName('playlearn.desktop');
+if (IS_WIN) app.setAppUserModelId('com.rahul1015s.playlearn');
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', (_e, argv) => {

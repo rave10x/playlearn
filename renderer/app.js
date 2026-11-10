@@ -724,7 +724,7 @@ function renderTimerPop() {
   const p = $('timerPop'); if (!p || p.hidden) return;
   if (T.phase === 'idle') {
     const last = LS.get('timerPreset', [25, 5]);
-    p.innerHTML = `<b>Study timer</b><small>${T.dnd === false ? 'Notification muting is only available on GNOME.' : 'Notifications are muted (Do Not Disturb) while you study.'}</small>
+    p.innerHTML = `<b>Study timer</b><small>${T.dnd === false ? 'Notification muting is only available on GNOME (Linux).' : 'Notifications are muted (Do Not Disturb) while you study.'}</small>
       ${[[25, 5], [50, 10], [90, 15]].map(([s, b]) => `<button class="preset ${last[0] === s ? 'on' : ''}" data-s="${s}" data-b="${b}">${s} min study · ${b} min break</button>`).join('')}`;
     p.querySelectorAll('.preset').forEach((b) => (b.onclick = () => { timerStart(+b.dataset.s, +b.dataset.b); }));
   } else {
@@ -806,7 +806,7 @@ function renderDlBox() {
     <div class="nrow"><button class="btn ghost" id="dlAll" ${done + busy >= n ? 'disabled' : ''}>Download all remaining</button>
       ${busy ? '<button class="btn ghost" id="dlCancel">Cancel downloads</button>' : ''}
       ${done ? '<button class="btn ghost" id="dlOpen">Open folder</button><button class="btn ghost" id="dlRemove">Remove all downloads</button>' : ''}</div>
-    ${FF ? '' : '<p class="hint">Without ffmpeg, downloads are 360p. For up to 720p: <code>sudo dnf install ffmpeg-free</code></p>'}`;
+    ${FF ? '' : `<p class="hint">Without ffmpeg, downloads are 360p. For up to 720p: <code>${/Windows/i.test(navigator.userAgent) ? 'winget install Gyan.FFmpeg' : 'sudo dnf install ffmpeg-free'}</code></p>`}`;
   $('dlAll').onclick = () => api.dlStart(C.id, C.lessons.filter((l) => l.type !== 'article' && (!DL[l.id] || DL[l.id].state === 'error')).map((l) => l.id));
   const cb = $('dlCancel'); if (cb) cb.onclick = () => api.dlCancel(C.id);
   const ob = $('dlOpen'); if (ob) ob.onclick = () => api.dlOpen(C.id);

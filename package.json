@@ -1,7 +1,7 @@
 {
   "name": "playlearn",
   "productName": "Playlearn",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Turn any YouTube playlist into a Udemy-style course, saved locally",
   "main": "main.js",
   "scripts": {
@@ -19,7 +19,8 @@
     "electron",
     "udemy",
     "fedora",
-    "linux"
+    "linux",
+    "windows"
   ],
   "repository": {
     "type": "git",
@@ -40,9 +41,6 @@
   "engines": {
     "node": ">=18"
   },
-  "os": [
-    "linux"
-  ],
   "homepage": "https://github.com/rahul1015s/playlearn#readme",
   "bugs": {
     "url": "https://github.com/rahul1015s/playlearn/issues"

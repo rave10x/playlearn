@@ -42,7 +42,7 @@ Built with Electron. Developed and tested on Fedora.
 One command, no cloning needed. Requires **Node.js 18+** (`sudo dnf install nodejs`):
 
 ```bash
-npx github:rahul1015s/playlearn
+npx github:rave10x/playlearn
 ```
 
 This installs Playlearn for your user (no root): the app goes to `~/.local/share/playlearn`,
@@ -53,14 +53,14 @@ Importing playlists uses **yt-dlp** – `sudo dnf install yt-dlp` (if it's missi
 Make sure `~/.local/bin` is in your `PATH` to use the `playlearn` command.
 
 ```bash
-npx github:rahul1015s/playlearn uninstall           # remove the app, keep your courses
-npx github:rahul1015s/playlearn uninstall --purge   # remove the app and your saved courses
+npx github:rave10x/playlearn uninstall           # remove the app, keep your courses
+npx github:rave10x/playlearn uninstall --purge   # remove the app and your saved courses
 ```
 
 ### Install from a clone
 
 ```bash
-git clone https://github.com/rahul1015s/playlearn.git
+git clone https://github.com/rave10x/playlearn.git
 cd playlearn
 ./install.sh
 ```
@@ -172,3 +172,28 @@ official embedded player. Respect creators and YouTube's Terms of Service.
 ## License
 
 MIT
+
+## Windows (Rust / Tauri)
+
+Install with one PowerShell command (downloads the latest release and installs it for your user, no admin needed):
+
+```powershell
+irm https://raw.githubusercontent.com/rave10x/playlearn/main/install.ps1 | iex
+```
+
+Or download the `-setup.exe` / `.msi` from the [Releases](https://github.com/rave10x/playlearn/releases) page.
+
+The Windows build is a Rust app: a small Tauri shell (`src-tauri/`) around the same UI (`renderer/`), with the backend
+(storage, yt-dlp, offline downloads, backups, article reader) written in Rust (`core/`). It reads and writes the same
+course data and backup format as the Linux and Android apps.
+
+To build the installer yourself on Windows (needs Rust and Node):
+
+```
+npm install --no-save @tauri-apps/cli@^2
+npx tauri build
+```
+
+The `.exe` (NSIS) and `.msi` installers appear in `target/release/bundle/`. Or run the **Windows build** GitHub Action.
+yt-dlp is downloaded on first use. For 720p downloads install ffmpeg: `winget install Gyan.FFmpeg`.
+Do Not Disturb during the study timer is Linux/GNOME only. Network ad blocking is not available; the in-player ad skipper is.

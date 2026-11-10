@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Playlearn talks to its local backend over HTTP, so no Tauri APIs are exposed to web content.",
+  "windows": ["main"],
+  "permissions": []
+}
