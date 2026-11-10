@@ -83,7 +83,7 @@ Or download the `-setup.exe` / `.msi` from the [Releases](https://github.com/rav
 
 Download [Playlearn-android.apk](https://github.com/rave10x/playlearn/releases/latest/download/Playlearn-android.apk) (about 4 MB, Android 8.0+) and open it. Android asks once to allow installs from your browser or file manager.
 It is a native app with the same features, the same built-in ad blocker, and reads the same backup file (**Settings → Export / Import**), so you can move your courses between phone and computer.
-The APK is signed with a debug key for sideloading, so install updates over it from the same source.
+The APK is signed with a debug key for sideloading, so install updates over it from the same source. Source code: [rave10x/playlearn-android](https://github.com/rave10x/playlearn-android).
 
 ### Build from source
 
