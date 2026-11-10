@@ -34,24 +34,47 @@ if [ -z "${PL_SKIP_DEPS:-}" ]; then
 fi
 
 # ---------- 2. the app ----------
+# Prefer the native package (.rpm/.deb): it uses your system WebKitGTK and video codecs, which is what makes YouTube play.
+# The AppImage bundles its own WebKit without codecs, so it is only a fallback for other distros.
 say "Finding the latest Playlearn release..."
-URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep -o '"browser_download_url": *"[^"]*\.AppImage"' | head -1 | sed -E 's/.*"(https[^"]*)"/\1/')
-[ -n "$URL" ] || { echo "No AppImage found in the latest release."; exit 1; }
-
-BIN="$HOME/.local/bin"; DATA="${XDG_DATA_HOME:-$HOME/.local/share}"; APP="$DATA/playlearn"
-mkdir -p "$BIN" "$DATA/applications" "$DATA/icons/hicolor/256x256/apps"
+JSON=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")
+asset() { printf '%s' "$JSON" | grep -o "\"browser_download_url\": *\"[^\"]*$1\"" | head -1 | sed -E 's/.*"(https[^"]*)"/\1/'; }
+BIN="$HOME/.local/bin"; DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-say "Downloading $(basename "$URL")..."
-curl -fL --progress-bar "$URL" -o "$TMP/pl.AppImage"
-chmod +x "$TMP/pl.AppImage"
-# unpack instead of mounting, so no FUSE is needed
-rm -rf "$APP"; mkdir -p "$APP"
-( cd "$TMP" && APPIMAGE_EXTRACT_AND_RUN=1 ./pl.AppImage --appimage-extract >/dev/null )
-mv "$TMP/squashfs-root/"* "$APP/" 2>/dev/null || mv "$TMP/squashfs-root/".[!.]* "$APP/" 2>/dev/null || true
-[ -x "$APP/AppRun" ] || { echo "Unpacking the AppImage failed."; exit 1; }
-printf '#!/bin/sh\nexec "%s/AppRun" "$@"\n' "$APP" > "$BIN/playlearn"; chmod +x "$BIN/playlearn"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/main/assets/icon-256.png" -o "$DATA/icons/hicolor/256x256/apps/playlearn.png" || true
-cat > "$DATA/applications/playlearn.desktop" <<DESKTOP
+
+# remove an older per-user (AppImage) install so the system one is used
+rm -f "$BIN/playlearn" "$DATA/applications/playlearn.desktop"; rm -rf "$DATA/playlearn"
+
+if command -v dnf >/dev/null && [ -n "$(asset '\.rpm')" ]; then
+  URL=$(asset '\.rpm'); say "Downloading $(basename "$URL")..."
+  curl -fL --progress-bar "$URL" -o "$TMP/playlearn.rpm"
+  $SUDO dnf install -y "$TMP/playlearn.rpm"
+  DONE=1
+elif command -v apt-get >/dev/null && [ -n "$(asset '\.deb')" ]; then
+  URL=$(asset '\.deb'); say "Downloading $(basename "$URL")..."
+  curl -fL --progress-bar "$URL" -o "$TMP/playlearn.deb"
+  $SUDO apt-get install -y "$TMP/playlearn.deb"
+  DONE=1
+elif command -v zypper >/dev/null && [ -n "$(asset '\.rpm')" ]; then
+  URL=$(asset '\.rpm'); say "Downloading $(basename "$URL")..."
+  curl -fL --progress-bar "$URL" -o "$TMP/playlearn.rpm"
+  $SUDO zypper --non-interactive --no-gpg-checks install "$TMP/playlearn.rpm"
+  DONE=1
+fi
+
+if [ -z "${DONE:-}" ]; then
+  say "No native package for this system: installing the AppImage (video playback may need extra codecs)."
+  URL=$(asset '\.AppImage'); [ -n "$URL" ] || { echo "No AppImage found in the latest release."; exit 1; }
+  APP="$DATA/playlearn"; mkdir -p "$BIN" "$DATA/applications" "$DATA/icons/hicolor/256x256/apps"
+  say "Downloading $(basename "$URL")..."
+  curl -fL --progress-bar "$URL" -o "$TMP/pl.AppImage"; chmod +x "$TMP/pl.AppImage"
+  mkdir -p "$APP"
+  ( cd "$TMP" && APPIMAGE_EXTRACT_AND_RUN=1 ./pl.AppImage --appimage-extract >/dev/null )
+  mv "$TMP/squashfs-root/"* "$APP/" 2>/dev/null || true
+  [ -x "$APP/AppRun" ] || { echo "Unpacking the AppImage failed."; exit 1; }
+  printf '#!/bin/sh\nexec "%s/AppRun" "$@"\n' "$APP" > "$BIN/playlearn"; chmod +x "$BIN/playlearn"
+  curl -fsSL "https://raw.githubusercontent.com/$REPO/main/assets/icon-256.png" -o "$DATA/icons/hicolor/256x256/apps/playlearn.png" || true
+  cat > "$DATA/applications/playlearn.desktop" <<DESKTOP
 [Desktop Entry]
 Name=Playlearn
 Comment=Turn YouTube playlists into Udemy-style courses
@@ -62,7 +85,8 @@ Type=Application
 Categories=Education;AudioVideo;
 StartupWMClass=playlearn
 DESKTOP
+  case ":$PATH:" in *":$BIN:"*) ;; *) echo "Note: add $BIN to your PATH to use the 'playlearn' command." ;; esac
+fi
 update-desktop-database "$DATA/applications" 2>/dev/null || true
 gtk-update-icon-cache -f -t "$DATA/icons/hicolor" 2>/dev/null || true
 printf '\033[32m✓ Playlearn installed.\033[0m Open it from the app menu, or run: playlearn\n'
-case ":$PATH:" in *":$BIN:"*) ;; *) echo "Note: add $BIN to your PATH to use the 'playlearn' command." ;; esac

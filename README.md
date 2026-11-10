@@ -60,13 +60,14 @@ More options (`.deb`, `.rpm`, `.msi`, build from source) are in [Install](#insta
 
 ### Linux (x86_64)
 
-One command installs **everything**: WebKitGTK, the video codecs, yt-dlp and ffmpeg (through your package manager: dnf, apt, pacman or zypper; it asks for your password once), then the app itself into your home folder (no root), with a `playlearn` command and an app-menu entry:
+One command installs **everything**: your system's WebKitGTK and video codecs, yt-dlp and ffmpeg (through your package manager: dnf, apt, pacman or zypper; it asks for your password once), then Playlearn itself as a native package (`.rpm` on Fedora/openSUSE, `.deb` on Ubuntu/Debian) so it uses your system WebKit and codecs. On other distros it falls back to an AppImage in your home folder.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rave10x/playlearn/main/install.sh | bash
 ```
 
 Run the same command again to update. You can also grab the `.deb` / `.rpm` / `.AppImage` from the [Releases](https://github.com/rave10x/playlearn/releases) page.
+Prefer the `.rpm` / `.deb` over the AppImage: the AppImage bundles its own WebKit without video codecs, so YouTube may refuse to play there.
 On Fedora, H.264 playback of some videos may additionally need RPM Fusion's codecs; most YouTube videos play without it.
 
 ### Windows
