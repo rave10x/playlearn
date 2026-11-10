@@ -8,6 +8,23 @@ notes and a custom video player. Everything about your courses is stored locally
 
 Built in Rust ([Tauri](https://tauri.app)) for Linux and Windows. Developed and tested on Fedora.
 
+## Quick install
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/rave10x/playlearn/main/install.ps1 | iex
+```
+
+**Linux** (x86_64, no root needed):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rave10x/playlearn/main/install.sh | bash
+```
+
+Both download the latest release and set up the app menu / Start menu entry. Ad blocking is built in and on by default.
+More options (`.deb`, `.rpm`, `.msi`, build from source) are in [Install](#install).
+
 ## Features
 
 - **Home page** – course grid with progress bars, "Continue learning" banner, add-playlist box
