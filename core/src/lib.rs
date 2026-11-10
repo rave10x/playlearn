@@ -32,6 +32,8 @@ pub struct Core {
     jobs: Mutex<Vec<String>>,
     render_hook: Mutex<Option<RenderHook>>,
     dialog_hook: Mutex<Option<DialogHook>>,
+    pending_url: Mutex<Option<String>>,
+    log_lines: std::sync::atomic::AtomicUsize,
 }
 
 pub fn rand_hex(n: usize) -> String {
@@ -54,6 +56,8 @@ impl Core {
             jobs: Mutex::new(vec![]),
             render_hook: Mutex::new(None),
             dialog_hook: Mutex::new(None),
+            pending_url: Mutex::new(None),
+            log_lines: std::sync::atomic::AtomicUsize::new(0),
         })
     }
     /// Same folder the Electron build uses (…\Roaming\Playlearn on Windows, ~/.config/Playlearn on Linux).
@@ -83,16 +87,33 @@ impl Core {
     /// Long-poll: events newer than `since` (`None` = from now). Waits up to `wait` for something to arrive.
     pub fn poll(&self, since: Option<u64>, wait: std::time::Duration) -> Value {
         let mut e = self.events.lock().unwrap();
-        let Some(since) = since else { return json!({"next": e.0, "events": []}) };
+        let Some(since) = since else {
+            let pend = self.pending_url.lock().unwrap().clone();
+            let evs: Vec<Value> = pend.into_iter().map(|u| json!({"n": "incoming-url", "d": u})).collect();
+            return json!({"next": e.0, "events": evs});
+        };
         if !e.1.iter().any(|x| x.0 > since) {
             e = self.events_cv.wait_timeout_while(e, wait, |g| !g.1.iter().any(|x| x.0 > since)).unwrap().0;
         }
         let evs: Vec<Value> = e.1.iter().filter(|x| x.0 > since).map(|x| json!({"n": x.1, "d": x.2})).collect();
         json!({"next": e.0, "events": evs})
     }
+    /// Small diagnostics file next to the courses (debug.log); capped so it never grows.
+    pub fn log(&self, msg: &str) {
+        use std::io::Write;
+        if self.log_lines.fetch_add(1, std::sync::atomic::Ordering::SeqCst) > 400 { return; }
+        let _ = std::fs::create_dir_all(&self.store.dir);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(self.store.dir.join("debug.log")) {
+            let _ = writeln!(f, "{} {}", now_ms(), msg);
+        }
+    }
     pub fn status(&self, m: &str) { self.emit("import-status", json!(m)); }
     /// Push a link the app was launched with (second instance, protocol handler) to the UI.
-    pub fn incoming_url(&self, u: &str) { self.emit("incoming-url", json!(u)); }
+    pub fn incoming_url(&self, u: &str) {
+        self.log(&format!("incoming_url {u}"));
+        *self.pending_url.lock().unwrap() = Some(u.to_string()); // kept until a page confirms it got it (survives a slow-loading window)
+        self.emit("incoming-url", json!(u));
+    }
 
     pub fn call(self: &Arc<Self>, cmd: &str, a: &[Value]) -> R<Value> {
         let arg = |i: usize| a.get(i).cloned().unwrap_or(Value::Null);
@@ -128,6 +149,8 @@ impl Core {
                 if !ok_id(&c) { return Ok(json!("")); }
                 let d = self.store.dl_dir(&c); let _ = std::fs::create_dir_all(&d); let _ = open::that_detached(d); Ok(json!(""))
             }
+            "log" => { self.log(&format!("ui: {}", s(0))); Ok(Value::Null) }
+            "incoming:ack" => { *self.pending_url.lock().unwrap() = None; Ok(Value::Null) }
             "chapters:get" => Ok(self.chapters(&s(0))),
             _ => Err(format!("unknown command {cmd}")),
         }

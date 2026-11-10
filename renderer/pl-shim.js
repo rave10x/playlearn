@@ -16,13 +16,13 @@
         const r = await fetch('/api/poll?t=' + encodeURIComponent(T) + (since === null ? '' : '&since=' + since), { cache: 'no-store' });
         if (!r.ok) throw new Error('poll ' + r.status);
         const j = await r.json(); since = j.next;
-        for (const ev of j.events) (L[ev.n] || []).forEach((f) => { try { f(ev.d); } catch (e) { console.error(e); } });
-      } catch { await new Promise((res) => setTimeout(res, 1500)); }
+        for (const ev of j.events) { (L[ev.n] || []).forEach((f) => { try { f(ev.d); } catch (e) { console.error(e); } }); if (ev.n === 'incoming-url') call('incoming:ack').catch(() => {}); }
+      } catch (e) { call('log', 'poll error ' + e).catch(() => {}); await new Promise((res) => setTimeout(res, 1500)); }
     }
   })();
 
   const pending = new Map(); let seq = 0;
-  addEventListener('message', (e) => { const d = e.data; if (d && d.__plr) { const p = pending.get(d.__plr); if (p) { pending.delete(d.__plr); p(d.result); } } });
+  addEventListener('message', (e) => { const d = e.data; if (d && d.__plhello) { call('log', 'embed script active in player frame').catch(() => {}); return; } if (d && d.__plr) { const p = pending.get(d.__plr); if (p) { pending.delete(d.__plr); p(d.result); } } });
   const playerOp = (op, arg) => new Promise((res) => {
     const f = [...document.querySelectorAll('iframe')].find((x) => /youtube(-nocookie)?\.com\/embed\//.test(x.src));
     if (!f || !f.contentWindow) return res(null);

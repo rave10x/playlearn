@@ -65,7 +65,9 @@ fn handle(core: Arc<Core>, mut req: Request, port: u16) {
     if method == Method::Get && path == "/api/poll" {
         if qget("t").as_deref() != Some(core.token.as_str()) { let _ = req.respond(text(403, "bad token")); return; }
         let since = qget("since").and_then(|v| v.parse::<u64>().ok());
+        core.log(&format!("poll since={since:?}"));
         let v = core.poll(since, std::time::Duration::from_secs(20));
+        core.log(&format!("poll -> {} events", v["events"].as_array().map_or(0, |a| a.len())));
         let _ = req.respond(Response::from_string(v.to_string()).with_header(hdr("Content-Type", "application/json")).with_header(hdr("Cache-Control", "no-store")));
         return;
     }

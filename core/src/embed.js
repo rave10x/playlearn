@@ -23,6 +23,8 @@
     } else if (mutedByUs && v) { v.muted = false; v.playbackRate = 1; mutedByUs = false; }
   }, 250);
 
+  try { parent.postMessage({ __plhello: 1 }, '*'); } catch (e) {}
+
   const P = () => document.getElementById('movie_player');
   const OPS = {
     audioList: () => {

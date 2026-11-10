@@ -13,6 +13,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(core) = app.try_state::<Arc<Core>>() { core.log(&format!("second instance argv={argv:?}")); }
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.unminimize();
                 let _ = w.set_focus();
