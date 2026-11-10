@@ -17,5 +17,13 @@ Write-Host 'Installing (per-user, no admin needed)...'
 Start-Process -FilePath $tmp -ArgumentList '/S' -Wait
 Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 
+# ffmpeg gives 720p offline downloads; install it automatically when winget is available (yt-dlp is fetched by the app itself)
+if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Host 'Installing ffmpeg (for 720p offline downloads)...'
+        try { winget install --id Gyan.FFmpeg -e --silent --accept-package-agreements --accept-source-agreements | Out-Null } catch { Write-Host 'ffmpeg install skipped.' }
+    } else { Write-Host 'winget not found: offline downloads will be 360p. Install ffmpeg later if you want 720p.' }
+}
+
 Write-Host "Playlearn $($rel.tag_name) installed. Open it from the Start menu." -ForegroundColor Green
-Write-Host 'Tip: for 720p offline downloads run: winget install Gyan.FFmpeg'
+Write-Host 'Nothing else to install: the web runtime is included and yt-dlp is downloaded automatically on first use.'

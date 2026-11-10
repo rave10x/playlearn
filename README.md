@@ -60,29 +60,24 @@ More options (`.deb`, `.rpm`, `.msi`, build from source) are in [Install](#insta
 
 ### Linux (x86_64)
 
-One command, no root needed. It downloads the latest AppImage, puts a `playlearn` command in `~/.local/bin` and adds **Playlearn** to your app menu:
+One command installs **everything**: WebKitGTK, the video codecs, yt-dlp and ffmpeg (through your package manager: dnf, apt, pacman or zypper; it asks for your password once), then the app itself into your home folder (no root), with a `playlearn` command and an app-menu entry:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rave10x/playlearn/main/install.sh | bash
 ```
 
-Needs **WebKitGTK 4.1** (Fedora: `sudo dnf install webkit2gtk4.1`, Ubuntu/Debian: `sudo apt install libwebkit2gtk-4.1-0`).
-For smooth YouTube playback you also need the GStreamer codec plugins (Fedora: `sudo dnf install gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-libav` plus RPM Fusion for H.264).
-You can also grab the `.deb` / `.rpm` / `.AppImage` from the [Releases](https://github.com/rave10x/playlearn/releases) page.
-Run the same command again to update.
-
-Importing playlists uses **yt-dlp** – `sudo dnf install yt-dlp` (if it's missing, the app downloads it on first import).
+Run the same command again to update. You can also grab the `.deb` / `.rpm` / `.AppImage` from the [Releases](https://github.com/rave10x/playlearn/releases) page.
+On Fedora, H.264 playback of some videos may additionally need RPM Fusion's codecs; most YouTube videos play without it.
 
 ### Windows
 
-One PowerShell command (downloads the latest release and installs it for your user, no admin needed):
+One PowerShell command. Nothing else to install: the web runtime is included, yt-dlp is downloaded automatically, and ffmpeg (for 720p offline downloads) is installed through winget when available. Installs for your user, no admin needed:
 
 ```powershell
 irm https://raw.githubusercontent.com/rave10x/playlearn/main/install.ps1 | iex
 ```
 
 Or download the `-setup.exe` / `.msi` from the [Releases](https://github.com/rave10x/playlearn/releases) page.
-yt-dlp is downloaded on first use. For 720p downloads install ffmpeg: `winget install Gyan.FFmpeg`.
 
 ### Android
 
