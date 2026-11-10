@@ -1,6 +1,6 @@
 [package]
 name = "playlearn"
-version = "1.7.0"
+version = "1.7.1"
 edition = "2021"
 description = "Turn any YouTube playlist into a Udemy-style course, saved locally"
 license = "MIT"

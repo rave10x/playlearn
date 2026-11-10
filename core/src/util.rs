@@ -24,10 +24,32 @@ pub fn str_of(v: &Value) -> &str {
     v.as_str().unwrap_or("")
 }
 
+/// Inside an AppImage the launcher points PATH, LD_LIBRARY_PATH, PYTHONHOME, GST_* … at the bundle.
+/// Child programs (system yt-dlp is a Python script, ffmpeg, xdg-open) must not inherit that.
+fn appdir() -> Option<String> { std::env::var("APPDIR").ok().filter(|s| !s.is_empty()) }
+fn strip_appdir(c: &mut Command) {
+    let Some(ad) = appdir() else { return };
+    for (k, v) in std::env::vars_os() {
+        let vs = v.to_string_lossy();
+        if !vs.contains(&ad) { continue; }
+        let keep: Vec<&str> = vs.split(':').filter(|p| !p.is_empty() && !p.contains(&ad)).collect();
+        if keep.is_empty() { c.env_remove(&k); } else { c.env(&k, keep.join(":")); }
+    }
+    c.env_remove("PYTHONHOME").env_remove("PYTHONPATH").env_remove("PYTHONDONTWRITEBYTECODE");
+}
+
+/// Open a folder or link with the desktop's default handler.
+pub fn open_detached(target: &std::ffi::OsStr) {
+    if cfg!(windows) { let _ = open::that_detached(target); return; }
+    let Some(bin) = find_on_path("xdg-open") else { return };
+    let _ = command(&bin).arg(target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+}
+
 /// Run a child process without flashing a console window on Windows.
 pub fn command(bin: &Path) -> Command {
     #[allow(unused_mut)]
     let mut c = Command::new(bin);
+    strip_appdir(&mut c);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -42,7 +64,9 @@ pub fn exe(name: &str) -> String {
 
 pub fn find_on_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH").or_else(|| std::env::var_os("Path"))?;
+    let ad = appdir();
     std::env::split_paths(&path)
+        .filter(|p| ad.as_ref().map_or(true, |a| !p.to_string_lossy().contains(a.as_str())))
         .map(|p| p.join(exe(name)))
         .find(|f| f.is_file())
 }

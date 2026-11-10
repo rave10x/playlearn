@@ -2776,7 +2776,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "playlearn"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "playlearn-core",
  "tauri",
@@ -2787,7 +2787,7 @@ dependencies = [
 
 [[package]]
 name = "playlearn-core"
-version = "1.7.0"
+version = "1.7.1"
 dependencies = [
  "dirs 5.0.1",
  "native-tls",

@@ -133,11 +133,11 @@ impl Core {
             "videos:resolve" => wrap(self.resolve_videos(&s(0))),
             "data:export" => wrap(self.export_data(&arg(0))),
             "data:import" => wrap(self.import_data()),
-            "data:folder" => { let _ = std::fs::create_dir_all(self.store.courses_dir()); let _ = open::that_detached(&self.store.dir); Ok(json!("")) }
+            "data:folder" => { let _ = std::fs::create_dir_all(self.store.courses_dir()); open_detached(self.store.dir.as_os_str()); Ok(json!("")) }
             "dnd:set" => Ok(json!(self.set_dnd(arg(0).as_bool().unwrap_or(false)))),
             "open-external" => {
                 let u = s(0);
-                if u.starts_with("http://") || u.starts_with("https://") { let _ = open::that_detached(u); }
+                if u.starts_with("http://") || u.starts_with("https://") { open_detached(std::ffi::OsStr::new(&u)); }
                 Ok(Value::Null)
             }
             "dl:list" => Ok(self.dl_list(&s(0))),
@@ -147,7 +147,7 @@ impl Core {
             "dl:open" => {
                 let c = s(0);
                 if !ok_id(&c) { return Ok(json!("")); }
-                let d = self.store.dl_dir(&c); let _ = std::fs::create_dir_all(&d); let _ = open::that_detached(d); Ok(json!(""))
+                let d = self.store.dl_dir(&c); let _ = std::fs::create_dir_all(&d); open_detached(d.as_os_str()); Ok(json!(""))
             }
             "log" => { self.log(&format!("ui: {}", s(0))); Ok(Value::Null) }
             "incoming:ack" => { *self.pending_url.lock().unwrap() = None; Ok(Value::Null) }
