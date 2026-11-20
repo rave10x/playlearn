@@ -59,7 +59,14 @@ async function doImport(url) {
   const btn = document.getElementById('addBtn'), st = document.getElementById('status');
   if (btn) btn.disabled = true;
   if (st) st.textContent = 'Working…';
-  const r = await api.importPlaylist(url);
+  let r;
+  const w = /^\s*(https?:\/\/|www\.)\S+\s*$/i.test(url) && !/[?&]list=/.test(url) && !/(^|\.)(youtube(-nocookie)?\.com|youtu\.be)\//i.test(url.replace(/^\s*https?:\/\//i, ''));
+  if (w) {
+    const sc = await siteCourseFromUrl(url.trim().replace(/^www\./i, 'https://www.'), '');
+    if (sc && sc.ok) { await api.save(sc.course); r = { ok: true, course: sc.course }; }
+    else if (sc && !sc.ok) r = sc;
+  }
+  if (!r) r = await api.importPlaylist(url);
   importing = false;
   if (r.ok) { openCourse(r.course.id); toast('Course ready: ' + r.course.title); }
   else { toast(r.error, true); if (st) st.textContent = r.error; if (btn) btn.disabled = false; }
@@ -68,10 +75,46 @@ api.onStatus((m) => { for (const id of ['status', 'mStatus']) { const st = docum
 api.onIncomingUrl((u) => { goHome().then(() => doImport(u)); });
 
 // ---------- home ----------
+let homeQ = '', homeTag = null;
+const hFilters = [['all', 'All'], ['active', 'In progress'], ['new', 'Not started'], ['done', 'Completed'], ['custom', 'Custom'], ['archived', 'Archived']];
+const hSorts = [['recent', 'Recently opened'], ['progress', 'Most progress'], ['title', 'Title A–Z'], ['added', 'Date added'], ['left', 'Least time left']];
+function visibleCourses(all) {
+  const f = LS.get('hFilter', 'all'), so = LS.get('hSort', 'recent'), q = homeQ.trim().toLowerCase();
+  const st = (c) => (pct(c) >= 100 ? 'done' : c.lessons.some((l) => l.done || l.pos) ? 'active' : 'new');
+  const left = (c) => (pct(c) >= 100 ? Infinity : c.lessons.filter((l) => !l.done).reduce((a, l) => a + l.duration, 0));
+  const cmp = {
+    recent: (a, b) => (b.lastOpened || b.createdAt || 0) - (a.lastOpened || a.createdAt || 0),
+    progress: (a, b) => pct(b) - pct(a) || (b.lastOpened || 0) - (a.lastOpened || 0),
+    title: (a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()),
+    added: (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
+    left: (a, b) => left(a) - left(b),
+  }[so] || (() => 0);
+  return all.filter((c) => (f === 'archived' ? c.archived : !c.archived && (f === 'all' || (f === 'custom' ? c.custom : st(c) === f))))
+    .filter((c) => !homeTag || (c.tags || []).includes(homeTag))
+    .filter((c) => !q || c.title.toLowerCase().includes(q) || (c.channel || '').toLowerCase().includes(q) || (c.tags || []).some((t) => t.toLowerCase().includes(q)))
+    .sort((a, b) => (!!b.pinned - !!a.pinned) || cmp(a, b));
+}
+function tagModal(id) {
+  if (document.getElementById('modal')) return;
+  api.list().then((all) => {
+    const c = all.find((x) => x.id === id); if (!c) return;
+    const known = [...new Set(all.flatMap((x) => x.tags || []))].sort(), chosen = new Set(c.tags || []);
+    const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.id = 'modal';
+    bg.innerHTML = `<div class="modal" role="dialog"><h3>Tags</h3><label>New tag<input id="tNew" maxlength="24" placeholder="e.g. java, dsa, dev" autocomplete="off" spellcheck="false"></label><div class="tagpick" id="tPick"></div><div class="mrow"><button class="btn ghost" id="tCancel" type="button">Cancel</button><button class="btn" id="tOk" type="button">Save</button></div></div>`;
+    document.body.appendChild(bg);
+    const $t = (x) => document.getElementById(x);
+    const draw = () => { $t('tPick').innerHTML = [...new Set([...known, ...chosen])].sort().map((t) => `<button type="button" class="chip ${chosen.has(t) ? 'on' : ''}" data-t="${esc(t)}">#${esc(t)}</button>`).join('') || '<small>Tags group your courses, e.g. “dsa”, “java”. Filter by them on the home screen.</small>'; $t('tPick').querySelectorAll('[data-t]').forEach((b) => (b.onclick = () => { chosen.has(b.dataset.t) ? chosen.delete(b.dataset.t) : chosen.add(b.dataset.t); draw(); })); };
+    const add = () => { const t = $t('tNew').value.trim().replace(/^#/, '').toLowerCase().slice(0, 24); if (t) chosen.add(t); $t('tNew').value = ''; draw(); };
+    $t('tNew').onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); add(); } if (e.key === 'Escape') bg.remove(); };
+    $t('tCancel').onclick = () => bg.remove(); bg.onmousedown = (e) => { if (e.target === bg) bg.remove(); };
+    $t('tOk').onclick = async () => { add(); c.tags = [...chosen]; if (!c.tags.length) delete c.tags; await api.save(c); bg.remove(); goHome(); };
+    draw(); $t('tNew').focus();
+  });
+}
 async function goHome() {
   destroyPlayer();
   const courses = await api.list();
-  const last = courses.find((c) => pct(c) < 100 && c.lessons.some((l) => l.done || l.pos));
+  const last = courses.filter((c) => !c.archived).sort((a, b) => (b.lastOpened || 0) - (a.lastOpened || 0)).find((c) => pct(c) < 100 && c.lessons.some((l) => l.done || l.pos));
   $app.innerHTML = `
   <div class="home">
     <div class="hero">
@@ -94,39 +137,71 @@ async function goHome() {
           <div class="bar"><i style="width:${pct(last)}%"></i></div></div>
         <button class="btn">Resume</button>
       </div>` : ''}
-      <div class="h2row"><h2>My courses</h2>${courses.some((c) => !c.custom) ? `<button class="btn ghost" id="refreshAll">${I.refresh} Refresh all</button>` : ''}</div>
-      ${courses.length ? `<div class="grid">${courses.map(card).join('')}</div>` : `
+      <div class="h2row"><h2>My courses</h2>${courses.some(refreshable) ? `<button class="btn ghost" id="refreshAll">${I.refresh} Refresh all</button>` : ''}</div>
+      ${courses.length ? `<div class="htools"><input id="hq" type="search" placeholder="Search courses, channels, #tags" value="${esc(homeQ)}" autocomplete="off" spellcheck="false">
+        <select id="hf" title="Filter">${hFilters.map(([k, l]) => `<option value="${k}" ${LS.get('hFilter', 'all') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select id="hs" title="Sort">${hSorts.map(([k, l]) => `<option value="${k}" ${LS.get('hSort', 'recent') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <button class="btn ghost" id="hv" title="Switch between grid and list view"></button></div>
+      <div class="tagrow" id="tagrow"></div><div id="cgrid"></div>` : `
       <div class="empty">${I.book}<h3>No courses yet</h3><p>Paste a playlist link above, or drag a link onto this window.</p></div>`}
     </div>
   </div>`;
   document.getElementById('newCustom').onclick = customModal;
   document.getElementById('settingsBtn').onclick = settingsModal;
   document.getElementById('addForm').onsubmit = (e) => { e.preventDefault(); doImport(document.getElementById('url').value); };
-  $app.querySelectorAll('[data-open]').forEach((el) => (el.onclick = () => openCourse(el.dataset.open)));
-  $app.querySelectorAll('[data-refresh]').forEach((el) => (el.onclick = async (e) => {
-    e.stopPropagation(); el.classList.add('spin');
-    const r = await api.refreshCourse(el.dataset.refresh);
-    toast(r.ok ? refreshMsg(r) : 'Refresh failed: ' + r.error, !r.ok); goHome();
-  }));
+  const bind = (root) => {
+    root.querySelectorAll('[data-open]').forEach((el) => (el.onclick = () => openCourse(el.dataset.open)));
+    root.querySelectorAll('[data-refresh]').forEach((el) => (el.onclick = async (e) => {
+      e.stopPropagation(); el.classList.add('spin');
+      const r = await refreshAny(el.dataset.refresh);
+      toast(r.ok ? refreshMsg(r) : 'Refresh failed: ' + r.error, !r.ok); goHome();
+    }));
+    root.querySelectorAll('[data-pin]').forEach((el) => (el.onclick = async (e) => { e.stopPropagation(); const c = await api.get(el.dataset.pin); c.pinned = !c.pinned; if (!c.pinned) delete c.pinned; await api.save(c); goHome(); }));
+    root.querySelectorAll('[data-arc]').forEach((el) => (el.onclick = async (e) => { e.stopPropagation(); const c = await api.get(el.dataset.arc); c.archived = !c.archived; if (c.archived) delete c.pinned; else delete c.archived; await api.save(c); toast(c.archived ? 'Archived – find it under the Archived filter' : 'Restored'); goHome(); }));
+    root.querySelectorAll('[data-tags]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); tagModal(el.dataset.tags); }));
+    root.querySelectorAll('[data-del]').forEach((el) => (el.onclick = async (e) => {
+      e.stopPropagation();
+      if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.style.width = 'auto'; el.style.padding = '0 10px'; el.textContent = 'Click again to delete'; setTimeout(goHome, 2500); return; }
+      await api.remove(el.dataset.del); goHome();
+    }));
+  };
+  bind($app);
+  const renderGrid = () => {
+    const box = document.getElementById('cgrid'); if (!box) return;
+    const vis = visibleCourses(courses);
+    const tags = [...new Set(courses.flatMap((c) => c.tags || []))].sort();
+    const tr = document.getElementById('tagrow');
+    if (tr) { tr.innerHTML = tags.map((t) => `<button type="button" class="chip ${homeTag === t ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join(''); tr.querySelectorAll('[data-tag]').forEach((b) => (b.onclick = () => { homeTag = homeTag === b.dataset.tag ? null : b.dataset.tag; renderGrid(); })); }
+    const list = LS.get('hView', 'grid') === 'list';
+    document.getElementById('hv').textContent = list ? '▦ Grid' : '☰ List';
+    box.innerHTML = vis.length ? `<div class="${list ? 'clist' : 'grid'}">${vis.map(card).join('')}</div>` : `<div class="empty"><h3>No courses match</h3><p>Try a different search or filter.</p></div>`;
+    bind(box);
+  };
+  if (document.getElementById('cgrid')) {
+    document.getElementById('hq').oninput = (e) => { homeQ = e.target.value; renderGrid(); };
+    document.getElementById('hf').onchange = (e) => { LS.set('hFilter', e.target.value); renderGrid(); };
+    document.getElementById('hs').onchange = (e) => { LS.set('hSort', e.target.value); renderGrid(); };
+    document.getElementById('hv').onclick = () => { LS.set('hView', LS.get('hView', 'grid') === 'list' ? 'grid' : 'list'); renderGrid(); };
+    renderGrid();
+  }
   { const ra = document.getElementById('refreshAll'); if (ra) ra.onclick = async () => {
     ra.disabled = true; let added = 0, failed = 0;
-    const pls = courses.filter((c) => !c.custom);
-    for (let k = 0; k < pls.length; k++) { ra.textContent = `Refreshing ${k + 1}/${pls.length}…`; const r = await api.refreshCourse(pls[k].id); if (r.ok) added += r.added; else failed++; }
+    const pls = courses.filter(refreshable);
+    for (let k = 0; k < pls.length; k++) { ra.textContent = `Refreshing ${k + 1}/${pls.length}…`; const r = await refreshAny(pls[k].id); if (r.ok) added += r.added; else failed++; }
     toast(`${added ? added + ' new lesson' + (added === 1 ? '' : 's') + ' found' : 'Everything is up to date'}${failed ? ` · ${failed} course(s) could not be checked` : ''}`, !!failed && !added); goHome();
   }; }
-  $app.querySelectorAll('[data-del]').forEach((el) => (el.onclick = async (e) => {
-    e.stopPropagation();
-    if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.style.width = 'auto'; el.style.padding = '0 10px'; el.textContent = 'Click again to delete'; setTimeout(goHome, 2500); return; }
-    await api.remove(el.dataset.del); goHome();
-  }));
 }
 function card(c) {
   const total = c.lessons.reduce((a, l) => a + l.duration, 0), p = pct(c);
   return `<div class="card" data-open="${esc(c.id)}">
     <div class="thumb" style="background-image:url(${esc(c.thumbnail)})"><div class="play"><b>${I.play}</b></div></div>
+    ${c.pinned ? '<span class="pinb" title="Pinned">📌</span>' : ''}
     <button class="del" data-del="${esc(c.id)}" title="Delete course">${I.trash}</button>
-    ${c.custom ? '' : `<button class="del refr" data-refresh="${esc(c.id)}" title="Check the playlist for new videos">${I.refresh}</button>`}
-    <div class="card-body"><h3>${esc(c.title)}</h3><small>${c.custom ? 'Custom course' : esc(c.channel)}</small>
+    <button class="del acts a3" data-pin="${esc(c.id)}" title="${c.pinned ? 'Unpin' : 'Pin to top'}">📌</button>
+    <button class="del acts a4" data-arc="${esc(c.id)}" title="${c.archived ? 'Restore from archive' : 'Archive'}">${c.archived ? '↩' : '🗄'}</button>
+    <button class="del acts a5" data-tags="${esc(c.id)}" title="Tags">#</button>
+    ${refreshable(c) ? `<button class="del refr" data-refresh="${esc(c.id)}" title="Check for new videos / pages">${I.refresh}</button>` : ''}
+    <div class="card-body"><h3>${esc(c.title)}</h3><small>${c.custom ? 'Custom course' : esc(c.channel)}</small>${(c.tags || []).length ? `<small class="ctags">${c.tags.map((t) => '#' + esc(t)).join(' ')}</small>` : ''}
       <div class="meta"><span>${c.lessons.length} lessons · ${fmtDur(total)}</span><span>${p}%</span></div>
       <div class="bar"><i style="width:${p}%"></i></div></div></div>`;
 }
@@ -161,7 +236,7 @@ async function openCourse(id) {
   await loadDl();
   query = '';
   cur = Math.max(0, C.lessons.findIndex((l) => l.id === C.lastLesson));
-  openSecs.clear(); openSecs.add(Math.floor(cur / SECTION_SIZE));
+  openSecs.clear(); openSecs.add(groupIndexOf(C, cur));
   tab = 'overview';
   renderCourse();
   queueSave();
@@ -248,7 +323,7 @@ function renderCourse() {
   $app.querySelectorAll('.tab').forEach((b) => (b.onclick = () => { saveNotes(); tab = b.dataset.tab; $app.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b)); renderPane(); }));
   { const si = document.getElementById('lsearch'); si.oninput = () => { query = si.value; renderList(); }; si.onkeydown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); si.value = ''; query = ''; renderList(); si.blur(); } }; }
   renderList(); renderPane(); wireTimer();
-  if (isArt) renderReader(L); else mountPlayer();
+  if (isArt) { if (isStubLesson(L)) { renderReaderLoading(L); loadStub(cur); } else { renderReader(L); upgradeLesson(L); } } else mountPlayer();
 }
 
 function renderPane() {
@@ -269,7 +344,9 @@ function renderPane() {
       </div>
       <div id="dlbox"></div>
       ${C.custom ? `<div class="nrow" style="margin-top:22px"><button class="btn" id="addBtn2">+ Add videos or articles</button></div>
-      <div class="hint">Paste video links from any channel, a whole playlist, or an article / blog post link and it joins the end of this course (articles open as a clean note page you can highlight, comment on and edit). Hover a lesson in the list to reorder or remove it. You can also drop a link onto this window.</div>` : `
+      <div class="hint">Paste video links from any channel, a whole playlist, or an article / blog post link and it joins the end of this course (articles open as a clean note page you can highlight, comment on and edit). Hover a lesson in the list to reorder or remove it. You can also drop a link onto this window.</div>
+      ${isSiteCourse(C) ? `<div class="nrow" style="margin-top:14px"><button class="btn ghost" id="refreshBtn">${I.refresh} Check for new pages</button><button class="btn ghost" id="syncBtn">Website ↗</button></div>
+      <div class="hint">${C.refreshedAt ? 'Last checked ' + ago(C.refreshedAt) + '. ' : ''}Checking only adds new pages from the website's sidebar. Everything already in this course – and anything the site later removes – stays saved on this computer. Use the ⭳ button on a section to save its lessons for offline reading.</div>` : ''}` : `
       <div class="nrow" style="margin-top:22px"><button class="btn ghost" id="refreshBtn">${I.refresh} Refresh playlist</button><button class="btn ghost" id="syncBtn">Source playlist ↗</button></div>
       <div class="hint">${C.refreshedAt ? 'Last checked ' + ago(C.refreshedAt) + '.' : 'Not checked yet.'} New videos are picked up automatically when you open the course (at most once a day).</div>`}`;
     if (C.custom) {
@@ -277,6 +354,7 @@ function renderPane() {
       const cn = document.getElementById('cname');
       cn.onchange = () => { C.title = cn.value.trim() || C.title; cn.value = C.title; const t = document.querySelector('.ctitle'); if (t) t.textContent = C.title; queueSave(); };
       cn.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') cn.blur(); };
+      if (isSiteCourse(C)) { document.getElementById('syncBtn').onclick = () => api.openExternal(C.url || (C.lessons.find((l) => l.url) || {}).url); document.getElementById('refreshBtn').onclick = () => refreshNow(false); }
     } else {
       document.getElementById('syncBtn').onclick = () => api.openExternal(C.url);
       document.getElementById('refreshBtn').onclick = () => refreshNow(false);
@@ -319,18 +397,21 @@ function renderList() {
     C.lessons.forEach((l, i) => { const m = matchLesson(l, ws); if (m) res.push(itemHtml(l, i, m, ws)); });
     html = res.length ? `<div class="results-h">${res.length} result${res.length === 1 ? '' : 's'}</div>${res.join('')}` : `<div class="nores">No lessons, notes or chapters match “${esc(query)}”.</div>`;
   } else {
-    const n = Math.ceil(C.lessons.length / SECTION_SIZE);
-    for (let s = 0; s < n; s++) {
-      const a = s * SECTION_SIZE, items = C.lessons.slice(a, a + SECTION_SIZE);
+    const groups = lessonGroups(C), site = isSiteCourse(C);
+    groups.forEach((g, s) => {
+      const a = g.a, items = C.lessons.slice(g.a, g.b);
       const done = items.filter((l) => l.done).length, dur = items.reduce((x, l) => x + l.duration, 0);
+      const key = C.id + '/' + s, pr = secDl.get(key), need = items.filter(isStubLesson).length;
+      const dl = !site ? '' : pr ? `<span class="secdl busy" data-secdl="${s}" title="Downloading…">${pr.done}/${pr.total}</span>` : need ? `<span class="secdl" data-secdl="${s}" title="Save this section for offline">⭳</span>` : `<span class="secdl ok" title="Saved for offline">✓</span>`;
       html += `<div class="sec ${openSecs.has(s) ? 'open' : ''}" data-s="${s}">
-      <button class="sec-h"><div><b>Section ${s + 1}: Lessons ${a + 1}–${a + items.length}</b><small>${done} / ${items.length} | ${fmtDur(dur)}</small></div>${I.chev}</button>
+      <button class="sec-h"><div><b>${g.title ? esc(g.title) : `Section ${s + 1}: Lessons ${a + 1}–${a + items.length}`}</b><small>${done} / ${items.length} | ${fmtDur(dur)}</small></div>${dl}${I.chev}</button>
       <div class="items">${items.map((l, k) => itemHtml(l, a + k, null, null)).join('')}</div></div>`;
-    }
+    });
   }
   const st = list.scrollTop;
   list.innerHTML = html;
   list.scrollTop = st;
+  list.querySelectorAll('[data-secdl]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); if (!el.classList.contains('busy')) downloadSection(+el.dataset.secdl); }));
   list.querySelectorAll('.sec-h').forEach((b) => (b.onclick = () => {
     const s = +b.parentElement.dataset.s; openSecs.has(s) ? openSecs.delete(s) : openSecs.add(s); b.parentElement.classList.toggle('open');
   }));
@@ -362,7 +443,7 @@ function setDone(i, v) { C.lessons[i].done = v; queueSave(); refreshProgress(); 
 function select(i) {
   if (i < 0 || i >= C.lessons.length) return;
   saveNotes(); persistPos();
-  cur = i; C.lastLesson = C.lessons[i].id; openSecs.add(Math.floor(i / SECTION_SIZE));
+  cur = i; C.lastLesson = C.lessons[i].id; openSecs.add(groupIndexOf(C, i));
   queueSave();
   renderCourse();
 }
@@ -421,6 +502,7 @@ function mountPlayer() {
   if (window.YT && YT.Player) make();
   else {
     window.onYouTubeIframeAPIReady = make;
+    if (!document.getElementById('ytapi')) { const s = document.createElement('script'); s.id = 'ytapi'; s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s); }
     setTimeout(() => { if (!player) toast('Cannot reach YouTube. Download lessons for offline use (the arrow next to a lesson).', true); }, 7000);
   }
 }
@@ -876,11 +958,11 @@ function refreshMsg(r) {
 }
 let refreshing = false;
 async function refreshNow(silent) {
-  if (refreshing || !C || C.custom) return;
+  if (refreshing || !C || !refreshable(C)) return;
   refreshing = true;
   const id = C.id, btn = $('refreshBtn'); if (btn && !silent) { btn.disabled = true; btn.lastChild.textContent = ' Checking…'; }
   flushSave();
-  const r = await api.refreshCourse(id);
+  const r = await refreshAny(id);
   refreshing = false;
   if (btn) { btn.disabled = false; }
   if (!r.ok) { if (!silent) toast('Refresh failed: ' + r.error, true); return; }
@@ -908,7 +990,7 @@ function moveLesson(i, d) {
   [C.lessons[i], C.lessons[j]] = [C.lessons[j], C.lessons[i]];
   cur = C.lessons.findIndex((l) => l.id === curId);
   C.thumbnail = lessonThumb(C.lessons[0]);
-  openSecs.add(Math.floor(j / SECTION_SIZE));
+  openSecs.add(groupIndexOf(C, j));
   queueSave(); renderList(); syncBar();
 }
 async function removeLesson(i, el) {
@@ -945,7 +1027,7 @@ function mergeResolved(r) {
   const dup = r.lessons.length - fresh.length; if (dup) bits.push(`${dup} already in this course`);
   if (r.errors.length) bits.push(`${r.errors.length} link${r.errors.length === 1 ? '' : 's'} could not be read`);
   if (fresh.length) {
-    openSecs.add(Math.floor((C.lessons.length - 1) / SECTION_SIZE));
+    openSecs.add(groupIndexOf(C, C.lessons.length - 1));
     queueSave(); loadDl().then(() => { renderList(); syncBar(); if (tab === 'overview') renderPane(); });
   }
   toast(bits.join(' · ') || 'Nothing to add', !fresh.length);
@@ -985,6 +1067,11 @@ function customModal() {
   linksModal({
     heading: 'New custom course', askName: true, okLabel: 'Create course',
     run: async (name, text) => {
+      if (/^\s*https?:\/\/\S+\s*$/i.test(text) && !/(youtube(-nocookie)?\.com|youtu\.be)\//i.test(text)) {
+        const sc = await siteCourseFromUrl(text.trim(), name);
+        if (sc && !sc.ok) return sc;
+        if (sc) { await api.save(sc.course); openCourse(sc.course.id); toast(`Course created with ${sc.course.lessons.length} lessons`); return { ok: true }; }
+      }
       const raw = await api.resolveVideos(text);
       if (!raw.ok) return raw;
       const r = prepareResolved(raw), p = r;

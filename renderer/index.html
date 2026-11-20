@@ -8,12 +8,15 @@
 <script>try{var t=JSON.parse(localStorage.getItem("theme"));if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="light"}</script>
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="stylesheet" href="styles.css">
+<style>.splash{position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#1c1d1f;color:#fff;font:600 20px system-ui}.splash img{border-radius:16px;animation:sp 1s ease-in-out infinite alternate}@keyframes sp{to{transform:scale(1.08);opacity:.8}}</style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><div class="splash"><img src="icon.svg" width="64" height="64" alt=""><b>Playlearn</b></div></div>
 <div id="toast" class="toast" hidden></div>
-<script src="https://www.youtube.com/iframe_api" async></script>
+<script src="hljs.min.js"></script>
 <script src="reader.js"></script>
+<script src="site.js"></script>
 <script src="app.js"></script>
+<script src="extras.js"></script>
 </body>
 </html>

@@ -133,7 +133,7 @@ function extractArticle(html, url) {
   const u = normUrl(url);
   return {
     id: 'a' + hash36(u), type: 'article', url: u, title, channel: site, byline, image,
-    duration: Math.max(60, Math.round(words / 230 * 60)), words, blocks: out,
+    duration: Math.max(60, Math.round(words / 230 * 60)), words, blocks: typeof mergeFlight === 'function' ? mergeFlight(out, html) : out, v: 2,
   };
 }
 
@@ -150,7 +150,46 @@ function prepareResolved(r) {
   return { lessons, errors };
 }
 
+
+// ---------- syntax colouring (tiny language-agnostic tokenizer) ----------
+const KW = new Set(('abstract as async await break case catch class const continue crate def default defer del delete do elif else enum except export extends extern final finally fn for from func function go goto if impl implements import in instanceof interface is lambda let loop match mod mut namespace new not of or override package pass private protected pub public raise readonly ref return self static struct super switch synchronized this throw throws trait try type typeof unsafe use val var virtual void volatile where while with yield and select insert update create table values join on group by order limit having union distinct begin end').split(' '));
+const LIT = new Set('true false null nil None True False undefined NaN Infinity'.split(' '));
+const TYP = new Set('int long short byte char float double boolean bool string str String i8 i16 i32 i64 u8 u16 u32 u64 usize isize f32 f64 Integer List Map Set Array Object Vec Option Result void number any'.split(' '));
+const TOK = /(\/\*[\s\S]*?\*\/|\/\/[^\n]*|#[^\n]*|--[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`(?:\\.|[^`\\])*`)|(\b0x[\da-fA-F]+\b|\b\d[\d_]*\.?\d*(?:[eE][+-]?\d+)?\b)|([A-Za-z_$][\w$]*)(\s*\()?|([{}()[\];,.:<>=!+\-*\/%&|^~?@]+)/g;
+function highlightCode(src, lang) {
+  if (window.hljs) {
+    try {
+      const l = String(lang || '').toLowerCase().replace(/^language-/, '');
+      if (l && hljs.getLanguage(l)) return hljs.highlight(src, { language: l, ignoreIllegals: true }).value;
+      if (!l) { const r = hljs.highlightAuto(src); if (r.relevance >= 6) return r.value; }
+    } catch {}
+  }
+  return tinyHighlight(src, lang);
+}
+function tinyHighlight(src, lang) {
+  const hashOk = !/^(java|c|cpp|c\+\+|cs|csharp|js|javascript|ts|typescript|go|rust|rs|kotlin|swift|php)$/i.test(lang || '');
+  let out = '', last = 0, m;
+  TOK.lastIndex = 0;
+  while ((m = TOK.exec(src))) {
+    out += esc(src.slice(last, m.index)); last = TOK.lastIndex;
+    const t = m[0];
+    if (m[1]) out += (t[0] === '#' && !hashOk) || (t[0] === '-' && /^(java|c|cpp|js|javascript|ts|typescript|go|rust|kotlin|swift)$/i.test(lang || '')) ? esc(t) : `<span class="tk-c">${esc(t)}</span>`;
+    else if (m[2]) out += `<span class="tk-s">${esc(t)}</span>`;
+    else if (m[3]) out += `<span class="tk-n">${esc(t)}</span>`;
+    else if (m[4]) {
+      const w = m[4], rest = m[5] ? esc(m[5]) : '';
+      if (KW.has(w) || KW.has(w.toLowerCase()) && /^(sql|mysql|postgres)/i.test(lang || '')) out += `<span class="tk-k">${w}</span>${rest}`;
+      else if (LIT.has(w)) out += `<span class="tk-l">${w}</span>${rest}`;
+      else if (TYP.has(w) || /^[A-Z][a-z]/.test(w)) out += `<span class="tk-t">${w}</span>${rest}`;
+      else if (m[5]) out += `<span class="tk-f">${w}</span>${rest}`;
+      else out += esc(w);
+    } else out += `<span class="tk-p">${esc(t)}</span>`;
+  }
+  return out + esc(src.slice(last));
+}
+
 // ---------- reader view ----------
+const gutter = (t) => String(t).split('\n').map((_, i) => i + 1).join('\n');
 function blockHtml(b, i) {
   const ed = 'contenteditable="plaintext-only" spellcheck="false"';
   let inner = '';
@@ -158,7 +197,8 @@ function blockHtml(b, i) {
     case 'h': inner = `<h${b.lvl} class="bt" ${ed}>${b.h}</h${b.lvl}>`; break;
     case 'li': inner = `<div class="bt li" style="--d:${b.d || 0}" data-n="${b.n || 0}" ${ed}>${b.h}</div>`; break;
     case 'q': inner = `<blockquote class="bt" ${ed}>${b.h}</blockquote>`; break;
-    case 'code': inner = `<pre class="bt code" ${ed}>${esc(b.t)}</pre>`; break;
+    case 'code': inner = `<div class="codewrap"><div class="cacts"><button data-act="ln" title="Line numbers">#</button><button data-act="wrap" title="Wrap long lines">↩</button><button data-act="copy" title="Copy code">Copy</button></div><div class="gut" aria-hidden="true">${gutter(b.t)}</div><pre class="bt code" ${b.alt ? `data-lang="${esc(b.alt)}"` : ''} ${ed}>${highlightCode(b.t, b.alt)}</pre></div>`; break;
+    case 'mermaid': inner = `<div class="bt mmd" data-code="${esc(b.t)}">Drawing diagram…</div>`; break;
     case 'cap': inner = `<div class="bt cap" ${ed}>${b.h}</div>`; break;
     case 'img': inner = `<img class="bimg" src="${esc(b.src)}" alt="${esc(b.alt)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.blk').remove()">`; break;
     case 'hr': inner = '<hr class="bhr">'; break;
@@ -185,7 +225,8 @@ function articleMarkdown(L) {
       case 'h': md += `${'#'.repeat(b.lvl)} ${mdInline(b.h)}\n\n`; break;
       case 'li': md += `${'  '.repeat(b.d || 0)}${b.n ? b.n + '.' : '-'} ${star}${mdInline(b.h)}\n`; break;
       case 'q': md += `> ${star}${mdInline(b.h)}\n\n`; break;
-      case 'code': md += '```\n' + b.t + '\n```\n\n'; break;
+      case 'code': md += '```' + (b.alt || '') + '\n' + b.t + '\n```\n\n'; break;
+      case 'mermaid': md += '```mermaid\n' + b.t + '\n```\n\n'; break;
       case 'img': md += `![${b.alt || ''}](${b.src})\n\n`; break;
       case 'hr': md += '---\n\n'; break;
       case 'cap': md += `*${mdInline(b.h)}*\n\n`; break;
@@ -198,6 +239,10 @@ function articleMarkdown(L) {
 }
 
 let pendingBlock = null;
+function applyCodePrefs() {
+  document.body.classList.toggle('code-ln', !!LS.get('codeLn', true));
+  document.body.classList.toggle('code-wrap', !!LS.get('codeWrap', false));
+}
 function renderReader(L) {
   const box = document.getElementById('reader'), sc = document.querySelector('.left');
   const hidden = L.blocks.filter((b) => b.x).length;
@@ -212,6 +257,8 @@ function renderReader(L) {
     <textarea class="notes" id="notes" placeholder="Write anything you want to remember…">${esc(L.notes)}</textarea>
     <div class="rfoot"><button class="btn" id="rDone"></button></div></div>`;
   const body = document.getElementById('rbody');
+  applyCodePrefs();
+  if (typeof drawMermaid === 'function') drawMermaid(body);
   const doneBtn = document.getElementById('rDone');
   const doneLabel = () => { doneBtn.textContent = L.done ? '✓ Marked as read – undo' : 'Mark as read'; doneBtn.classList.toggle('ghost', !!L.done); };
   doneLabel();
@@ -234,6 +281,8 @@ function renderReader(L) {
     const a = e.target.closest('a[data-ext]'); if (a) { e.preventDefault(); api.openExternal(a.href); return; }
     const btn = e.target.closest('[data-act]'); if (!btn) return;
     const el = blk(btn), i = +el.dataset.b, b = L.blocks[i];
+    if (btn.dataset.act === 'copy') { navigator.clipboard.writeText(b.t).then(() => { btn.textContent = 'Copied ✓'; setTimeout(() => (btn.textContent = 'Copy'), 1400); }); return; }
+    if (btn.dataset.act === 'ln' || btn.dataset.act === 'wrap') { const k = btn.dataset.act === 'ln' ? 'codeLn' : 'codeWrap'; LS.set(k, !LS.get(k, k === 'codeLn')); applyCodePrefs(); return; }
     if (btn.dataset.act === 'hl') { b.hl = !b.hl; if (!b.hl) delete b.hl; el.classList.toggle('hl', !!b.hl); }
     else if (btn.dataset.act === 'cm') { if (b.c === undefined) { b.c = ''; redo(el, i); } const inp = body.querySelector(`.blk[data-b="${i}"] .bcm input`); if (inp) inp.focus(); }
     else if (btn.dataset.act === 'hide') { const top = sc.scrollTop; b.x = true; renderReader(L); sc.scrollTop = top; }
@@ -245,11 +294,15 @@ function renderReader(L) {
     }
     queueSave();
   };
+  body.addEventListener('focusin', (e) => {
+    const p = e.target.closest && e.target.closest('pre.code'); if (!p || p.dataset.raw) return;
+    p.dataset.raw = '1'; p.textContent = L.blocks[+blk(p).dataset.b].t;
+  });
   body.addEventListener('input', (e) => {
     const el = blk(e.target); if (!el) return;
     const b = L.blocks[+el.dataset.b];
     if (e.target.matches('.bcm input')) { b.c = e.target.value; queueSave(); }
-    else if (e.target.isContentEditable) e.target.dataset.dirty = '1';
+    else if (e.target.isContentEditable) { e.target.dataset.dirty = '1'; const g = el.querySelector('.gut'); if (g) g.textContent = gutter(e.target.innerText.replace(/\n$/, '')); }
   });
   body.addEventListener('focusout', (e) => {
     const el = blk(e.target); if (!el) return;
@@ -261,6 +314,7 @@ function renderReader(L) {
       b.t = b.k === 'code' ? txt.replace(/\n+$/, '') : txt.replace(/\s+/g, ' ').trim();
       b.h = esc(b.t); queueSave();
     }
+    if (e.target.matches && e.target.matches('pre.code')) { delete e.target.dataset.raw; e.target.innerHTML = highlightCode(b.t, b.alt); }
   });
 
   // reading position + auto "read" at the end
